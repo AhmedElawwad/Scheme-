@@ -1,3 +1,6 @@
+;;Write a function that takes a list of lists and returns a list of the length of each of these lists. Use the predefined Scheme function
+
+
 (define (MapLen lst)
   (map length lst))
   
