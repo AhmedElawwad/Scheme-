@@ -1,0 +1,66 @@
+import cv2
+import numpy as np
+from picamera.array import PiRGBArray
+from picamera import PiCamera
+import time
+
+# Initialize the camera
+camera = PiCamera()
+camera.resolution = (640, 480)
+camera.framerate = 32
+rawCapture = PiRGBArray(camera, size=(640, 480))
+
+# Allow the camera to warm up
+time.sleep(2)
+
+# Define parameters for motion detection
+avg = None
+motionDetected = False
+videoBuffer = []
+
+for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
+    text = "No Motion"
+    image = frame.array
+
+    # Convert the frame to grayscale for processing
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (21, 21), 0)
+
+    # Initialize the average frame
+    if avg is None:
+        avg = gray.copy().astype("float")
+        rawCapture.truncate(0)
+        continue
+
+    # Compute the difference between the current frame and the average frame
+    cv2.accumulateWeighted(gray, avg, 0.5)
+    frameDelta = cv2.absdiff(gray, cv2.convertScaleAbs(avg))
+
+    # Threshold the delta image, find contours to determine the motion area
+    thresh = cv2.threshold(frameDelta, 25, 255, cv2.THRESH_BINARY)[1]
+    thresh = cv2.dilate(thresh, None, iterations=2)
+    contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    for contour in contours:
+        if cv2.contourArea(contour) < 500:
+            continue
+        text = "Motion Detected!"
+        motionDetected = True
+        break
+
+    if motionDetected:
+        videoBuffer.append(image)
+        if len(videoBuffer) >= 100:  # record 100 frames (change as needed)
+            out = cv2.VideoWriter('motion_detected.avi', cv2.VideoWriter_fourcc(*'XVID'), 20.0, (640, 480))
+            for recordedFrame in videoBuffer:
+                out.write(recordedFrame)
+            out.release()
+            videoBuffer = []
+            motionDetected = False
+
+    rawCapture.truncate(0)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cv2.destroyAllWindows()
